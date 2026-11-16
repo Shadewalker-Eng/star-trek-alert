@@ -1,0 +1,30 @@
+<Project>
+  <UsingTask TaskName="DeduplicateRuntimeManifest" TaskFactory="RoslynCodeTaskFactory" AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <Manifest ParameterType="System.String" Required="true" />
+    </ParameterGroup>
+    <Task>
+      <Using Namespace="System.IO" />
+      <Using Namespace="System.Text.RegularExpressions" />
+      <Code Type="Fragment" Language="cs"><![CDATA[
+        var content = File.ReadAllText(Manifest);
+        var files = new Regex(@"<asmv3:file name=""([^""]+)""[^>]*>(.*?)</asmv3:file>", RegexOptions.Singleline);
+        var entries = new System.Collections.Generic.Dictionary<string, Match>(StringComparer.OrdinalIgnoreCase);
+        foreach (Match match in files.Matches(content))
+        {
+          var name = match.Groups[1].Value;
+          if (!entries.ContainsKey(name) || match.Groups[2].Value.Length > entries[name].Groups[2].Value.Length)
+            entries[name] = match;
+        }
+        var fixedContent = files.Replace(content, match =>
+          entries[match.Groups[1].Value].Index == match.Index ? match.Value : "");
+        if (fixedContent != content) File.WriteAllText(Manifest, fixedContent);
+      ]]></Code>
+    </Task>
+  </UsingTask>
+  <Target Name="FixSingleFileRuntimeManifest" AfterTargets="CreateWinRTRegistration" Condition="'$(PublishSingleFile)' == 'true'">
+    <DeduplicateRuntimeManifest Manifest="$(ApplicationManifest)" />
+  </Target>
+</Project>
+
+
